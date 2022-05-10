@@ -50,11 +50,13 @@ fn setup_bid<T: Config<I>, I: 'static>(
 ) -> (T::AccountId, T::AccountId, BalanceOf<T>, BalanceOf<T>, Vec<u8>) {
 	let caller = account("caller", u, SEED);
 	let value: BalanceOf<T, I> = T::CandidateDeposit::get().saturating_mul(100u32.into());
-
 	let _ = T::Currency::make_free_balance_be(&caller, value);
-	//let curator = account("curator", u, SEED);
+	let tip = value / 2u32.into();
+	let who = account("who", u, SEED);
+	let _ = T::Currency::make_free_balance_be(&who, tip / 2u32.into());
+	//let who_lookup = T::Lookup::unlookup(who);
 	//let reason = vec![0; d as usize];
-	(caller, value)
+	(caller, value, who, tip)
 }
 
 fn create_bounty<T: Config>(
@@ -82,11 +84,11 @@ fn assert_last_event<T: Config>(generic_event: <T as Config>::Event) {
 
 benchmarks! {
 	bid {
-		let (caller, value) = setup_bid::<T, _>(SEED);
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 	}:  _(RawOrigin::Signed(caller), value)
 
 	unbid {
-		let (caller, value) = setup_bid::<T, _>(SEED);
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
 			RawOrigin::Signed(caller).into(),
 			value
@@ -94,6 +96,11 @@ benchmarks! {
 
 		let pos = Bids::<T, _>::get().len() - 1;
 	}: _(RawOrigin::Signed(caller), pos)
+
+	vouch {
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		//insert caller into member storage?
+	}:  _(RawOrigin::Signed(caller), who, value, tip)
 
 	propose_bounty {
 		let d in 0 .. T::MaximumReasonLength::get();
