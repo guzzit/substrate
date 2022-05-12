@@ -181,6 +181,59 @@ benchmarks! {
 		frame_system::Pallet::<T>::set_block_number(maturityinitialize);
 	}: _(RawOrigin::Signed(caller))
 
+	found {
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		let founder = account("founder", u, SEED);
+		let max_members = 100;
+		let rules = b"don't be weasels";
+	}: _(RawOrigin::Signed(caller), founder, max_members, rules)
+
+	unfound {
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		let max_members = 100;
+		let rules = b"don't be weasels";
+		MaxMembers::<T, _>::put(max_members);
+		Society::add_member(&caller);
+		Head::<T, _>>::put(&caller);
+		Founder::<T, _>>::put(&caller);
+		Rules::<T, _>::put(T::Hashing::hash(&rules));
+	}: _(RawOrigin::Signed(caller))
+
+	judge_suspended_member {
+		//set up payouts
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		Society::<T, _>::bid(
+			RawOrigin::Signed(caller.clone()).into(),
+			value
+		)?;
+		Society::add_member(&caller);
+
+		setup_payouts_account::<T>();
+		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
+
+		let members = Members::<T, _>::get();
+
+		let maturity = <frame_system::Pallet<T>>::block_number() +
+				Society::lock_duration(members.len() as u32);
+
+		Society::bump_payouy(caller, maturity, value);
+
+		//set up strikes
+		Strikes::<T, _>>::mutate(caller.clone(), |s| {
+							*s += 1;
+							*s
+						});
+		//set up vouching
+		Society::<T, _>::vouch(
+			RawOrigin::Signed(caller).into(),
+			value,
+			who,
+			tip
+		)?;
+
+		let forgive = false;
+	}: _(RawOrigin::Signed(caller), who, forgive)
+
 	propose_bounty {
 		let d in 0 .. T::MaximumReasonLength::get();
 
