@@ -203,11 +203,11 @@ benchmarks! {
 		//set up payouts
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller.clone()).into(),
+			RawOrigin::Signed(who.clone()).into(),
 			value
 		)?;
-		Society::add_member(&caller);
-
+		Society::add_member(&who);
+		SuspendedMembers::<T, _>>::put(&caller);
 		setup_payouts_account::<T>();
 		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
 
@@ -234,79 +234,27 @@ benchmarks! {
 		let forgive = false;
 	}: _(RawOrigin::Signed(caller), who, forgive)
 
-	propose_bounty {
-		let d in 0 .. T::MaximumReasonLength::get();
+	judge_suspended_candidate {
 
-		let (caller, curator, fee, value, description) = setup_bounty::<T>(0, d);
-	}: _(RawOrigin::Signed(caller), value, description)
+		setup_payouts_account::<T>();
+		let judgement = Judgement::Reject;
+		
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		Society::<T, _>::bid(
+			RawOrigin::Signed(who).into(),
+			value
+		)?;
 
-	approve_bounty {
-		let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, T::MaximumReasonLength::get());
-		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-		let bounty_id = BountyCount::<T>::get() - 1;
-	}: _(RawOrigin::Root, bounty_id)
+		//let candidates = Self::take_selected(members.len(), pot);
+		//get bid and put in sus
+		let candidates = Bids::<T, _>::get();
+		Candidates<T, _>>::put(&candidates);
+		let suspended_candidate = candidates[0];
+		SuspendedCandidates<T, _>>::insert(&suspended_candidate, (suspended_candidate.value, suspended_candidate.kind));
+		
+	}: _(RawOrigin::Signed(caller), who, forgive, judgement)
 
-	propose_curator {
-		setup_pot_account::<T>();
-		let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, T::MaximumReasonLength::get());
-		let curator_lookup = T::Lookup::unlookup(curator.clone());
-		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-		let bounty_id = BountyCount::<T>::get() - 1;
-		Bounties::<T>::approve_bounty(RawOrigin::Root.into(), bounty_id)?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-	}: _(RawOrigin::Root, bounty_id, curator_lookup, fee)
-
-	// Worst case when curator is inactive and any sender unassigns the curator.
-	unassign_curator {
-		setup_pot_account::<T>();
-		let (curator_lookup, bounty_id) = create_bounty::<T>()?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-		let bounty_id = BountyCount::<T>::get() - 1;
-		frame_system::Pallet::<T>::set_block_number(T::BountyUpdatePeriod::get() + 1u32.into());
-		let caller = whitelisted_caller();
-	}: _(RawOrigin::Signed(caller), bounty_id)
-
-	accept_curator {
-		setup_pot_account::<T>();
-		let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, T::MaximumReasonLength::get());
-		let curator_lookup = T::Lookup::unlookup(curator.clone());
-		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-		let bounty_id = BountyCount::<T>::get() - 1;
-		Bounties::<T>::approve_bounty(RawOrigin::Root.into(), bounty_id)?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-		Bounties::<T>::propose_curator(RawOrigin::Root.into(), bounty_id, curator_lookup, fee)?;
-	}: _(RawOrigin::Signed(curator), bounty_id)
-
-	award_bounty {
-		setup_pot_account::<T>();
-		let (curator_lookup, bounty_id) = create_bounty::<T>()?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-
-		let bounty_id = BountyCount::<T>::get() - 1;
-		let curator = T::Lookup::lookup(curator_lookup).map_err(<&str>::from)?;
-
-		let beneficiary = T::Lookup::unlookup(account("beneficiary", 0, SEED));
-	}: _(RawOrigin::Signed(curator), bounty_id, beneficiary)
-
-	claim_bounty {
-		setup_pot_account::<T>();
-		let (curator_lookup, bounty_id) = create_bounty::<T>()?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-
-		let bounty_id = BountyCount::<T>::get() - 1;
-		let curator = T::Lookup::lookup(curator_lookup).map_err(<&str>::from)?;
-
-		let beneficiary_account: T::AccountId = account("beneficiary", 0, SEED);
-		let beneficiary = T::Lookup::unlookup(beneficiary_account.clone());
-		Bounties::<T>::award_bounty(RawOrigin::Signed(curator.clone()).into(), bounty_id, beneficiary)?;
-
-		frame_system::Pallet::<T>::set_block_number(T::BountyDepositPayoutDelay::get());
-		ensure!(T::Currency::free_balance(&beneficiary_account).is_zero(), "Beneficiary already has balance");
-
-	}: _(RawOrigin::Signed(curator), bounty_id)
-	verify {
-		ensure!(!T::Currency::free_balance(&beneficiary_account).is_zero(), "Beneficiary didn't get paid");
-	}
+	
 
 	close_bounty_proposed {
 		setup_pot_account::<T>();
