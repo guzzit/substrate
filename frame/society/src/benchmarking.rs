@@ -21,33 +21,31 @@
 
 use super::*;
 
-use frame_benchmarking::{account, benchmarks, whitelisted_caller};
+use frame_benchmarking::{account, benchmarks_instance_pallet};
 use frame_system::RawOrigin;
 use sp_runtime::traits::Bounded;
 
 use crate::Pallet as Society;
-use pallet_treasury::Pallet as Treasury;
 
 const SEED: u32 = 0;
 
 // Create bounties that are approved for use in `on_initialize`.
-fn create_approved_bounties<T: Config>(n: u32) -> Result<(), &'static str> {
-	for i in 0..n {
-		let (caller, _curator, _fee, value, reason) =
-			setup_bounty::<T>(i, T::MaximumReasonLength::get());
-		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-		let bounty_id = BountyCount::<T>::get() - 1;
-		Bounties::<T>::approve_bounty(RawOrigin::Root.into(), bounty_id)?;
-	}
-	ensure!(BountyApprovals::<T>::get().len() == n as usize, "Not all bounty approved");
-	Ok(())
-}
+// fn create_approved_bounties<T: Config>(n: u32) -> Result<(), &'static str> {
+// 	for i in 0..n {
+// 		let (caller, _curator, _fee, value, reason) =
+// 			setup_bounty::<T>(i, T::MaximumReasonLength::get());
+// 		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
+// 		let bounty_id = BountyCount::<T>::get() - 1;
+// 		Bounties::<T>::approve_bounty(RawOrigin::Root.into(), bounty_id)?;
+// 	}
+// 	ensure!(BountyApprovals::<T>::get().len() == n as usize, "Not all bounty approved");
+// 	Ok(())
+// }
 
 // Create the pre-requisite information needed to create a society `bid`.
 fn setup_bid<T: Config<I>, I: 'static>(
 	u: u32,
-	d: u32,
-) -> (T::AccountId, T::AccountId, BalanceOf<T>, BalanceOf<T>, Vec<u8>) {
+) -> (T::AccountId, BalanceOf<T, I>,T::AccountId, BalanceOf<T, I>) {
 	let caller = account("caller", u, SEED);
 	let value: BalanceOf<T, I> = T::CandidateDeposit::get().saturating_mul(100u32.into());
 	let _ = T::Currency::make_free_balance_be(&caller, value);
@@ -71,55 +69,44 @@ fn setup_payouts_account<T: Config>() {
 	let _ = T::Currency::make_free_balance_be(&payouts_account, value);
 }
 
-fn create_bounty<T: Config>(
-) -> Result<(<T::Lookup as StaticLookup>::Source, BountyIndex), &'static str> {
-	let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, T::MaximumReasonLength::get());
-	let curator_lookup = T::Lookup::unlookup(curator.clone());
-	Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-	let bounty_id = BountyCount::<T>::get() - 1;
-	Bounties::<T>::approve_bounty(RawOrigin::Root.into(), bounty_id)?;
-	Treasury::<T>::on_initialize(T::BlockNumber::zero());
-	Bounties::<T>::propose_curator(RawOrigin::Root.into(), bounty_id, curator_lookup.clone(), fee)?;
-	Bounties::<T>::accept_curator(RawOrigin::Signed(curator).into(), bounty_id)?;
-	Ok((curator_lookup, bounty_id))
-}
 
-fn assert_last_event<T: Config>(generic_event: <T as Config>::Event) {
-	frame_system::Pallet::<T>::assert_last_event(generic_event.into());
-}
 
-benchmarks! {
+// fn assert_last_event<T: Config>(generic_event: <T as Config>::Event) {
+// 	frame_system::Pallet::<T>::assert_last_event(generic_event.into());
+// }
+
+benchmarks_instance_pallet! {
 	bid {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-	}:  _(RawOrigin::Signed(caller), value)
+	}: _(RawOrigin::Signed(caller), value)
 
 	unbid {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller).into(),
+			RawOrigin::Signed(caller.clone()).into(),
 			value
 		)?;
 
-		let pos = Bids::<T, _>::get().len() - 1;
+		let pos: u32 = 0;//Bids::<T, _>::get().len() - 1;
 	}: _(RawOrigin::Signed(caller), pos)
 
 	vouch {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		//insert caller into member storage?
-		Society::add_member(&caller);
+		Society::<T, _>::add_member(&caller);
 	}:  _(RawOrigin::Signed(caller), who, value, tip)
 
 	unvouch {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-		Society::add_member(&caller);
+		Society::<T, _>::add_member(&caller);
 		Society::<T, _>::vouch(
-			RawOrigin::Signed(caller).into(),
-			value,
+			RawOrigin::Signed(caller.clone()).into(),
 			who,
+			value,
 			tip
 		)?;
 
-		let pos = Bids::<T, _>::get().len() - 1;
+		let pos: u32 = 0;//Bids::<T, _>::get().len() - 1;
 	}: _(RawOrigin::Signed(caller), pos)
 
 	vote {
@@ -127,35 +114,35 @@ benchmarks! {
 
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller).into(),
+			RawOrigin::Signed(caller.clone()).into(),
 			value
 		)?;
 
-		Society::add_member(&caller);
+		Society::<T, _>::add_member(&caller);
 
 		//let candidates = Self::take_selected(members.len(), pot);
 		let candidates = Bids::<T, _>::get();
-		Candidates<T, _>>::put(&candidates);
+		Candidates::<T, _>::put(&candidates);
 
-		let candidate = account("candidate", u, SEED);
+		let candidate = account("candidate", 0, SEED);
 		let candidate_lookup = T::Lookup::unlookup(candidate);
 		let approve = true;
-	}: _(RawOrigin::Signed(caller), candidate, approve)
+	}: _(RawOrigin::Signed(caller), candidate_lookup, approve)
 
 	defender_vote{
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller).into(),
+			RawOrigin::Signed(caller.clone()).into(),
 			value
 		)?;
-		Society::add_member(&caller);
+		Society::<T, _>::add_member(&caller);
 
-		let member_2 = account("member_2", u, SEED);
-		let member_3 = account("member_3", u, SEED);
+		let member_2: T::AccountId = account("member_2", 0, SEED);
+		let member_3: T::AccountId = account("member_3", 0, SEED);
 
-		Society::add_member(&member_2);
-		Society::add_member(&member_3);
-		Defender::<T, _>>::put(&member_2);
+		Society::<T, _>::add_member(&member_2);
+		Society::<T, _>::add_member(&member_3);
+		Defender::<T, _>::put(&member_2);
 
 		let approve = true;
 	}: _(RawOrigin::Signed(caller), approve)
@@ -163,10 +150,10 @@ benchmarks! {
 	payout {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller).into(),
+			RawOrigin::Signed(caller.clone()).into(),
 			value
 		)?;
-		Society::add_member(&caller);
+		Society::<T, _>::add_member(&caller);
 
 		setup_payouts_account::<T>();
 		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
@@ -174,29 +161,30 @@ benchmarks! {
 		let members = Members::<T, _>::get();
 
 		let maturity = <frame_system::Pallet<T>>::block_number() +
-				Society::lock_duration(members.len() as u32);
+				Society::<T, _>::lock_duration(members.len() as u32);
 
-		Society::bump_payouy(caller, maturity, value);
+		Society::<T, _>::bump_payout(&caller, maturity.clone(), value);
 
-		frame_system::Pallet::<T>::set_block_number(maturityinitialize);
+		frame_system::Pallet::<T>::set_block_number(maturity);
 	}: _(RawOrigin::Signed(caller))
 
 	found {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-		let founder = account("founder", u, SEED);
+		let founder = account("founder", 0, SEED);
 		let max_members = 100;
 		let rules = b"don't be weasels";
-	}: _(RawOrigin::Signed(caller), founder, max_members, rules)
+		let a = rules.to_vec();
+	}: _(RawOrigin::Signed(caller), founder, max_members, a)
 
 	unfound {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		let max_members = 100;
 		let rules = b"don't be weasels";
 		MaxMembers::<T, _>::put(max_members);
-		Society::add_member(&caller);
-		Head::<T, _>>::put(&caller);
-		Founder::<T, _>>::put(&caller);
-		Rules::<T, _>::put(T::Hashing::hash(&rules));
+		Society::<T, _>::add_member(&caller);
+		Head::<T, _>::put(&caller);
+		Founder::<T, _>::put(&caller);
+		Rules::<T, _>::put(T::Hashing::hash(rules));
 	}: _(RawOrigin::Signed(caller))
 
 	judge_suspended_member {
@@ -206,28 +194,28 @@ benchmarks! {
 			RawOrigin::Signed(who.clone()).into(),
 			value
 		)?;
-		Society::add_member(&who);
-		SuspendedMembers::<T, _>>::put(&caller);
+		Society::<T, _>::add_member(&who);
+		SuspendedMembers::<T, _>::insert(&who, true);
 		setup_payouts_account::<T>();
 		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
 
 		let members = Members::<T, _>::get();
 
 		let maturity = <frame_system::Pallet<T>>::block_number() +
-				Society::lock_duration(members.len() as u32);
+				Society::<T, _>::lock_duration(members.len() as u32);
 
-		Society::bump_payouy(caller, maturity, value);
+		Society::<T, _>::bump_payout(&who, maturity, value);
 
 		//set up strikes
-		Strikes::<T, _>>::mutate(caller.clone(), |s| {
+		Strikes::<T, _>::mutate(who.clone(), |s| {
 							*s += 1;
 							*s
 						});
 		//set up vouching
 		Society::<T, _>::vouch(
-			RawOrigin::Signed(caller).into(),
+			RawOrigin::Signed(who.clone()).into(),
+			who.clone(),
 			value,
-			who,
 			tip
 		)?;
 
@@ -241,72 +229,80 @@ benchmarks! {
 		
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(who).into(),
+			RawOrigin::Signed(who.clone()).into(),
 			value
 		)?;
 
 		//let candidates = Self::take_selected(members.len(), pot);
 		//get bid and put in sus
 		let candidates = Bids::<T, _>::get();
-		Candidates<T, _>>::put(&candidates);
-		let suspended_candidate = candidates[0];
-		SuspendedCandidates<T, _>>::insert(&suspended_candidate, (suspended_candidate.value, suspended_candidate.kind));
+		Candidates::<T, _>::put(&candidates);
+		let suspended_candidate = candidates[0].clone();
+		SuspendedCandidates::<T, _>::insert(&suspended_candidate.who, (suspended_candidate.value, suspended_candidate.kind));
 		
-	}: _(RawOrigin::Signed(caller), who, forgive, judgement)
+	}: _(RawOrigin::Signed(caller), who, judgement)
 
+	set_max_members {
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+
+		let max_members = 100;
+
+	}: _(RawOrigin::Signed(caller), max_members)
 	
 
-	close_bounty_proposed {
-		setup_pot_account::<T>();
-		let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, 0);
-		Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
-		let bounty_id = BountyCount::<T>::get() - 1;
-	}: close_bounty(RawOrigin::Root, bounty_id)
+	// close_bounty_proposed {
+	// 	setup_pot_account::<T>();
+	// 	let (caller, curator, fee, value, reason) = setup_bounty::<T>(0, 0);
+	// 	Bounties::<T>::propose_bounty(RawOrigin::Signed(caller).into(), value, reason)?;
+	// 	let bounty_id = BountyCount::<T>::get() - 1;
+	// }: close_bounty(RawOrigin::Root, bounty_id)
 
-	close_bounty_active {
-		setup_pot_account::<T>();
-		let (curator_lookup, bounty_id) = create_bounty::<T>()?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
-		let bounty_id = BountyCount::<T>::get() - 1;
-	}: close_bounty(RawOrigin::Root, bounty_id)
-	verify {
-		assert_last_event::<T>(Event::BountyCanceled { index: bounty_id }.into())
-	}
+	// close_bounty_active {
+	// 	setup_pot_account::<T>();
+	// 	let (curator_lookup, bounty_id) = create_bounty::<T>()?;
+	// 	Bounties::<T>::on_initialize(T::BlockNumber::zero());
+	// 	let bounty_id = BountyCount::<T>::get() - 1;
+	// }: close_bounty(RawOrigin::Root, bounty_id)
+	// verify {
+	// 	assert_last_event::<T>(Event::BountyCanceled { index: bounty_id }.into())
+	// }
 
-	extend_bounty_expiry {
-		setup_pot_account::<T>();
-		let (curator_lookup, bounty_id) = create_bounty::<T>()?;
-		Bounties::<T>::on_initialize(T::BlockNumber::zero());
+	// extend_bounty_expiry {
+	// 	setup_pot_account::<T>();
+	// 	let (curator_lookup, bounty_id) = create_bounty::<T>()?;
+	// 	Bounties::<T>::on_initialize(T::BlockNumber::zero());
 
-		let bounty_id = BountyCount::<T>::get() - 1;
-		let curator = T::Lookup::lookup(curator_lookup).map_err(<&str>::from)?;
-	}: _(RawOrigin::Signed(curator), bounty_id, Vec::new())
-	verify {
-		assert_last_event::<T>(Event::BountyExtended { index: bounty_id }.into())
-	}
+	// 	let bounty_id = BountyCount::<T>::get() - 1;
+	// 	let curator = T::Lookup::lookup(curator_lookup).map_err(<&str>::from)?;
+	// }: _(RawOrigin::Signed(curator), bounty_id, Vec::new())
+	// verify {
+	// 	assert_last_event::<T>(Event::BountyExtended { index: bounty_id }.into())
+	// }
 
-	spend_funds {
-		let b in 1 .. 100;
-		setup_pot_account::<T>();
-		create_approved_bounties::<T>(b)?;
+	// spend_funds {
+	// 	let b in 1 .. 100;
+	// 	setup_pot_account::<T>();
+	// 	create_approved_bounties::<T>(b)?;
 
-		let mut budget_remaining = BalanceOf::<T>::max_value();
-		let mut imbalance = PositiveImbalanceOf::<T>::zero();
-		let mut total_weight = Weight::zero();
-		let mut missed_any = false;
-	}: {
-		<Bounties<T> as pallet_treasury::SpendFunds<T>>::spend_funds(
-			&mut budget_remaining,
-			&mut imbalance,
-			&mut total_weight,
-			&mut missed_any,
-		);
-	}
-	verify {
-		ensure!(budget_remaining < BalanceOf::<T>::max_value(), "Budget not used");
-		ensure!(missed_any == false, "Missed some");
-		assert_last_event::<T>(Event::BountyBecameActive { index: b - 1 }.into())
-	}
+	// 	let mut budget_remaining = BalanceOf::<T>::max_value();
+	// 	let mut imbalance = PositiveImbalanceOf::<T>::zero();
+	// 	let mut total_weight = Weight::zero();
+	// 	let mut missed_any = false;
+	// }: {
+	// 	<Bounties<T> as pallet_treasury::SpendFunds<T>>::spend_funds(
+	// 		&mut budget_remaining,
+	// 		&mut imbalance,
+	// 		&mut total_weight,
+	// 		&mut missed_any,
+	// 	);
+	// }
+	// verify {
+	// 	ensure!(budget_remaining < BalanceOf::<T>::max_value(), "Budget not used");
+	// 	ensure!(missed_any == false, "Missed some");
+	// 	assert_last_event::<T>(Event::BountyBecameActive { index: b - 1 }.into())
+	// }
 
-	impl_benchmark_test_suite!(Bounties, crate::tests::new_test_ext(), crate::tests::Test)
+	//impl_benchmark_test_suite!(Bounties, crate::tests::new_test_ext(), crate::tests::Test)
+	impl_benchmark_test_suite!(Society, crate::tests::new_test_ext(), crate::tests::Test);
+
 }
