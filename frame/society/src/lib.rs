@@ -715,8 +715,8 @@ pub mod pallet {
 		///
 		/// Total Complexity: O(M + B + C + logM + logB + X)
 		/// # </weight>
-		//#[pallet::weight(T::BlockWeights::get().max_block / 10)]
-		#[pallet::weight(T::WeightInfo::bid())]
+		#[pallet::weight(T::BlockWeights::get().max_block / 10)]
+		//#[pallet::weight(T::WeightInfo::bid())]
 		pub fn bid(origin: OriginFor<T>, value: BalanceOf<T, I>) -> DispatchResult {
 			let who = ensure_signed(origin)?;
 			ensure!(!<SuspendedCandidates<T, I>>::contains_key(&who), Error::<T, I>::Suspended);

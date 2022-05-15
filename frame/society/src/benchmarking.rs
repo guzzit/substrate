@@ -57,28 +57,28 @@ fn setup_bid<T: Config<I>, I: 'static>(
 	(caller, value, who, tip)
 }
 
+//why isn't this called?
 fn setup_pot_account<T: Config>() {
 	let pot_account = Society::<T>::account_id();
 	let value = T::Currency::minimum_balance().saturating_mul(1_000_000_000u32.into());
 	let _ = T::Currency::make_free_balance_be(&pot_account, value);
 }
 
-fn setup_payouts_account<T: Config>() {
-	let payouts_account = Society::<T>::payouts();
+fn setup_payouts_account<T: Config<I>, I: 'static>() {
+	let payouts_account = Society::<T, I>::payouts();
 	let value = T::Currency::minimum_balance().saturating_mul(1_000_000_000u32.into());
 	let _ = T::Currency::make_free_balance_be(&payouts_account, value);
 }
 
-
-
-// fn assert_last_event<T: Config>(generic_event: <T as Config>::Event) {
-// 	frame_system::Pallet::<T>::assert_last_event(generic_event.into());
-// }
+fn assert_last_event<T: Config<I>, I: 'static>(generic_event: <T as Config<I>>::Event) {
+	frame_system::Pallet::<T>::assert_last_event(generic_event.into());
+}
 
 benchmarks_instance_pallet! {
 	bid {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 	}: _(RawOrigin::Signed(caller), value)
+	
 
 	unbid {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
@@ -114,7 +114,7 @@ benchmarks_instance_pallet! {
 
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 		Society::<T, _>::bid(
-			RawOrigin::Signed(caller.clone()).into(),
+			RawOrigin::Signed(who.clone()).into(),
 			value
 		)?;
 
@@ -124,8 +124,7 @@ benchmarks_instance_pallet! {
 		let candidates = Bids::<T, _>::get();
 		Candidates::<T, _>::put(&candidates);
 
-		let candidate = account("candidate", 0, SEED);
-		let candidate_lookup = T::Lookup::unlookup(candidate);
+		let candidate_lookup = T::Lookup::unlookup(who);
 		let approve = true;
 	}: _(RawOrigin::Signed(caller), candidate_lookup, approve)
 
@@ -155,7 +154,7 @@ benchmarks_instance_pallet! {
 		)?;
 		Society::<T, _>::add_member(&caller);
 
-		setup_payouts_account::<T>();
+		setup_payouts_account::<T, _>();
 		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
 
 		let members = Members::<T, _>::get();
@@ -169,85 +168,109 @@ benchmarks_instance_pallet! {
 	}: _(RawOrigin::Signed(caller))
 
 	found {
-		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-		let founder = account("founder", 0, SEED);
+		//let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		let founder: T::AccountId = account("who", 0, SEED);
+		//let b = RawOrigin::Signed(caller.clone()).into();
+		//let origin = Society::FounderSetOrigin::ensure_origin(b);
+		//let origin = account("FounderSetAccount", 1, 1);
+		let origin = T::FounderSetOrigin::successful_origin();
 		let max_members = 100;
-		let rules = b"don't be weasels";
+		let rules = b"be cool";
 		let a = rules.to_vec();
-	}: _(RawOrigin::Signed(caller), founder, max_members, a)
+		let f: T::AccountId = founder.clone();
+		Head::<T, _>::kill();
+
+	}: _<T::Origin>(origin,  founder, max_members, a)
+	verify {
+		assert_last_event::<T, _>(Event::Founded { founder:f }.into())
+	}//_(RawOrigin::Signed(origin), founder, max_members, a)
 
 	unfound {
 		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		//let max_members = 100;
+		//let rules = b"be cool";
+		let origin = T::FounderSetOrigin::successful_origin();
 		let max_members = 100;
-		let rules = b"don't be weasels";
-		MaxMembers::<T, _>::put(max_members);
-		Society::<T, _>::add_member(&caller);
-		Head::<T, _>::put(&caller);
-		Founder::<T, _>::put(&caller);
-		Rules::<T, _>::put(T::Hashing::hash(rules));
+		let rules = b"be cool";
+		let a = rules.to_vec();
+		Head::<T, _>::kill();
+		Society::<T, _>::found(
+			origin,
+			caller.clone(),
+			max_members,
+			a
+		)?;
+		//MaxMembers::<T, _>::put(max_members);
+		// Society::<T, _>::add_member(&caller);
+		// Head::<T, _>::put(&caller);
+		// Founder::<T, _>::put(&caller);
+		// Rules::<T, _>::put(T::Hashing::hash(rules));
 	}: _(RawOrigin::Signed(caller))
 
-	judge_suspended_member {
-		//set up payouts
-		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-		Society::<T, _>::bid(
-			RawOrigin::Signed(who.clone()).into(),
-			value
-		)?;
-		Society::<T, _>::add_member(&who);
-		SuspendedMembers::<T, _>::insert(&who, true);
-		setup_payouts_account::<T>();
-		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
+	// judge_suspended_member {
+	// 	//set up payouts
+	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+	// 	Society::<T, _>::bid(
+	// 		RawOrigin::Signed(who.clone()).into(),
+	// 		value
+	// 	)?;
+	// 	Society::<T, _>::add_member(&who);
+	// 	setup_payouts_account::<T, _>();
+	// 	//Society::<T, _>::on_initialize(T::BlockNumber::zero());
 
-		let members = Members::<T, _>::get();
+	// 	let members = Members::<T, _>::get();
 
-		let maturity = <frame_system::Pallet<T>>::block_number() +
-				Society::<T, _>::lock_duration(members.len() as u32);
+	// 	let maturity = <frame_system::Pallet<T>>::block_number() +
+	// 			Society::<T, _>::lock_duration(members.len() as u32);
 
-		Society::<T, _>::bump_payout(&who, maturity, value);
+	// 	Society::<T, _>::bump_payout(&who, maturity, value);
 
-		//set up strikes
-		Strikes::<T, _>::mutate(who.clone(), |s| {
-							*s += 1;
-							*s
-						});
-		//set up vouching
-		Society::<T, _>::vouch(
-			RawOrigin::Signed(who.clone()).into(),
-			who.clone(),
-			value,
-			tip
-		)?;
+	// 	//set up strikes
+	// 	Strikes::<T, _>::mutate(who.clone(), |s| {
+	// 						*s += 1;
+	// 						*s
+	// 					});
+	// 	//set up vouching
+	// 	let account: T::AccountId = account("account", 0, SEED);
 
-		let forgive = false;
-	}: _(RawOrigin::Signed(caller), who, forgive)
+	// 	Society::<T, _>::vouch(
+	// 		RawOrigin::Signed(who.clone()).into(),
+	// 		account.clone(),
+	// 		value,
+	// 		tip
+	// 	)?;
+	// 	SuspendedMembers::<T, _>::insert(&who, true);
 
-	judge_suspended_candidate {
 
-		setup_payouts_account::<T>();
-		let judgement = Judgement::Reject;
+	// 	let forgive = false;
+	// }: _(RawOrigin::Root, who, forgive)
+
+	// judge_suspended_candidate {
+
+	// 	setup_payouts_account::<T, _>();
+	// 	let judgement = Judgement::Reject;
 		
-		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-		Society::<T, _>::bid(
-			RawOrigin::Signed(who.clone()).into(),
-			value
-		)?;
+	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+	// 	Society::<T, _>::bid(
+	// 		RawOrigin::Signed(who.clone()).into(),
+	// 		value
+	// 	)?;
 
-		//let candidates = Self::take_selected(members.len(), pot);
-		//get bid and put in sus
-		let candidates = Bids::<T, _>::get();
-		Candidates::<T, _>::put(&candidates);
-		let suspended_candidate = candidates[0].clone();
-		SuspendedCandidates::<T, _>::insert(&suspended_candidate.who, (suspended_candidate.value, suspended_candidate.kind));
+	// 	//let candidates = Self::take_selected(members.len(), pot);
+	// 	//get bid and put in sus
+	// 	let candidates = Bids::<T, _>::get();
+	// 	Candidates::<T, _>::put(&candidates);
+	// 	let suspended_candidate = candidates[0].clone();
+	// 	SuspendedCandidates::<T, _>::insert(&suspended_candidate.who, (suspended_candidate.value, suspended_candidate.kind));
 		
-	}: _(RawOrigin::Signed(caller), who, judgement)
+	// }: _(RawOrigin::Root, who, judgement)
 
-	set_max_members {
-		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+	// set_max_members {
+	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 
-		let max_members = 100;
+	// 	let max_members = 100;
 
-	}: _(RawOrigin::Signed(caller), max_members)
+	// }: _(RawOrigin::Root, max_members)
 	
 
 	// close_bounty_proposed {
