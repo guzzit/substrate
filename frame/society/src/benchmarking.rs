@@ -207,70 +207,97 @@ benchmarks_instance_pallet! {
 		// Rules::<T, _>::put(T::Hashing::hash(rules));
 	}: _(RawOrigin::Signed(caller))
 
-	// judge_suspended_member {
-	// 	//set up payouts
-	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-	// 	Society::<T, _>::bid(
-	// 		RawOrigin::Signed(who.clone()).into(),
-	// 		value
-	// 	)?;
-	// 	Society::<T, _>::add_member(&who);
-	// 	setup_payouts_account::<T, _>();
-	// 	//Society::<T, _>::on_initialize(T::BlockNumber::zero());
+	judge_suspended_member {
+		//set up payouts
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		//set up origin
+		let origin = T::FounderSetOrigin::successful_origin();
+		let max_members = 100;
+		let rules = b"be cool";
+		let a = rules.to_vec();
+		Head::<T, _>::kill();
+		Society::<T, _>::found(
+			origin,
+			caller.clone(),
+			max_members,
+			a
+		)?;
+		//
 
-	// 	let members = Members::<T, _>::get();
+		Society::<T, _>::bid(
+			RawOrigin::Signed(who.clone()).into(),
+			value
+		)?;
+		Society::<T, _>::add_member(&who);
+		setup_payouts_account::<T, _>();
+		//Society::<T, _>::on_initialize(T::BlockNumber::zero());
 
-	// 	let maturity = <frame_system::Pallet<T>>::block_number() +
-	// 			Society::<T, _>::lock_duration(members.len() as u32);
+		let members = Members::<T, _>::get();
 
-	// 	Society::<T, _>::bump_payout(&who, maturity, value);
+		let maturity = <frame_system::Pallet<T>>::block_number() +
+				Society::<T, _>::lock_duration(members.len() as u32);
 
-	// 	//set up strikes
-	// 	Strikes::<T, _>::mutate(who.clone(), |s| {
-	// 						*s += 1;
-	// 						*s
-	// 					});
-	// 	//set up vouching
-	// 	let account: T::AccountId = account("account", 0, SEED);
+		Society::<T, _>::bump_payout(&who, maturity, value);
 
-	// 	Society::<T, _>::vouch(
-	// 		RawOrigin::Signed(who.clone()).into(),
-	// 		account.clone(),
-	// 		value,
-	// 		tip
-	// 	)?;
-	// 	SuspendedMembers::<T, _>::insert(&who, true);
+		//set up strikes
+		Strikes::<T, _>::mutate(who.clone(), |s| {
+							*s += 1;
+							*s
+						});
+		//set up vouching
+		let account: T::AccountId = account("account", 0, SEED);
+
+		Society::<T, _>::vouch(
+			RawOrigin::Signed(who.clone()).into(),
+			account.clone(),
+			value,
+			tip
+		)?;
+		SuspendedMembers::<T, _>::insert(&who, true);
 
 
-	// 	let forgive = false;
-	// }: _(RawOrigin::Root, who, forgive)
+		let forgive = false;
+	}: _(RawOrigin::Signed(caller), who, forgive)
 
-	// judge_suspended_candidate {
+	judge_suspended_candidate {
 
-	// 	setup_payouts_account::<T, _>();
-	// 	let judgement = Judgement::Reject;
+		setup_payouts_account::<T, _>();
+		let judgement = Judgement::Reject;
 		
-	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
-	// 	Society::<T, _>::bid(
-	// 		RawOrigin::Signed(who.clone()).into(),
-	// 		value
-	// 	)?;
+		let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+		//set up origin
+		let origin = T::FounderSetOrigin::successful_origin();
+		let max_members = 100;
+		let rules = b"be cool";
+		let a = rules.to_vec();
+		Head::<T, _>::kill();
+		Society::<T, _>::found(
+			origin,
+			caller.clone(),
+			max_members,
+			a
+		)?;
+		//
+		Society::<T, _>::bid(
+			RawOrigin::Signed(who.clone()).into(),
+			value
+		)?;
 
-	// 	//let candidates = Self::take_selected(members.len(), pot);
-	// 	//get bid and put in sus
-	// 	let candidates = Bids::<T, _>::get();
-	// 	Candidates::<T, _>::put(&candidates);
-	// 	let suspended_candidate = candidates[0].clone();
-	// 	SuspendedCandidates::<T, _>::insert(&suspended_candidate.who, (suspended_candidate.value, suspended_candidate.kind));
+		//let candidates = Self::take_selected(members.len(), pot);
+		//get bid and put in sus
+		let candidates = Bids::<T, _>::get();
+		Candidates::<T, _>::put(&candidates);
+		let suspended_candidate = candidates[0].clone();
+		SuspendedCandidates::<T, _>::insert(&suspended_candidate.who, (suspended_candidate.value, suspended_candidate.kind));
 		
-	// }: _(RawOrigin::Root, who, judgement)
+	}: _(RawOrigin::Signed(caller), who, judgement)
 
-	// set_max_members {
-	// 	let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
+	set_max_members {
+		//let (caller, value, who, tip) = setup_bid::<T, _>(SEED);
 
-	// 	let max_members = 100;
+		let max_members = 100;
 
-	// }: _(RawOrigin::Root, max_members)
+	}: _(RawOrigin::Root, max_members)
 	
 
 	// close_bounty_proposed {
