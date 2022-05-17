@@ -45,6 +45,8 @@ frame_support::construct_runtime!(
 		System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
 		Balances: pallet_balances::{Pallet, Call, Storage, Config<T>, Event<T>},
 		Multisig: pallet_multisig::{Pallet, Call, Storage, Event<T>},
+		Treasury: pallet_treasury::{Pallet, Call, Storage, Config, Event<T>},
+		Proxy: proxy::{Pallet, Call, Storage, Event<T>},
 	}
 );
 
@@ -91,6 +93,51 @@ impl pallet_balances::Config for Test {
 	type WeightInfo = ();
 }
 
+parameter_types! {
+	pub const ProposalBond: Permill = Permill::from_percent(5);
+	pub const Burn: Permill = Permill::from_percent(50);
+	pub const TreasuryPalletId: PalletId = PalletId(*b"py/trsry");
+}
+
+impl pallet_treasury::Config for Test {
+	type PalletId = TreasuryPalletId;
+	type Currency = pallet_balances::Pallet<Test>;
+	type ApproveOrigin = frame_system::EnsureRoot<u128>;
+	type RejectOrigin = frame_system::EnsureRoot<u128>;
+	type Event = Event;
+	type OnSlash = ();
+	type ProposalBond = ProposalBond;
+	type ProposalBondMinimum = ConstU64<1>;
+	type ProposalBondMaximum = ();
+	type SpendPeriod = ConstU64<2>;
+	type Burn = Burn;
+	type BurnDestination = (); // Just gets burned.
+	type WeightInfo = ();
+	type SpendFunds = Bounties;
+	type MaxApprovals = ConstU32<100>;
+}
+
+pub enum ProxyType {
+	Any,
+	JustTransfer,
+	JustUtility,
+}
+
+impl pallet_proxy::Config for Test {
+	type Event = Event;
+	type Call = Call;
+	type Currency = Balances;
+	type ProxyType = ProxyType;
+	type ProxyDepositBase = ConstU64<1>;
+	type ProxyDepositFactor = ConstU64<1>;
+	type MaxProxies = ConstU32<4>;
+	type WeightInfo = ();
+	type CallHasher = BlakeTwo256;
+	type MaxPending = ConstU32<2>;
+	type AnnouncementDepositBase = ConstU64<1>;
+	type AnnouncementDepositFactor = ConstU64<1>;
+}
+
 pub struct TestBaseCallFilter;
 impl Contains<Call> for TestBaseCallFilter {
 	fn contains(c: &Call) -> bool {
@@ -133,6 +180,21 @@ fn now() -> Timepoint<u64> {
 fn call_transfer(dest: u64, value: u64) -> Call {
 	Call::Balances(BalancesCall::transfer { dest, value })
 }
+
+fn call_cancel_as_multi(
+	threshold: u16, 
+	other_signatories: Vec<T::AccountId>, 
+	timepoint: Timepoint<T::BlockNumber>,
+	call_hash: [u8; 32],
+) -> Call {
+	Call::Multisig(pallet_multisig::Call::cancel_as_multi { 
+		threshold, 
+		other_signatories,
+		timepoint,
+		call_hash
+	 })
+}
+
 
 #[test]
 fn multisig_deposit_is_taken_and_returned() {
@@ -942,5 +1004,82 @@ fn multisig_handles_no_preimage_after_all_approve() {
 			call_weight
 		));
 		assert_eq!(Balances::free_balance(6), 15);
+	});
+}
+
+#[test]
+fn reentracy_attack_fails() {
+	new_test_ext().execute_with(|| {
+		//maybe fund accounts?
+		let multi = Multisig::multi_account_id(&[1, 2][..], 2);
+		assert_ok!(Treasury::propose_spend(Origin::signed(1), 1, 3));
+		assert_ok!(Proxy::add_proxy(Origin::signed(1), multi, ProxyType::Any, 0));
+
+		let timepoint = now();
+		let call = call_cancel_as_multi(2,Vec![1,2],timepoint,[]).encode();
+		let code_hash = blake2_256(&call);
+		pub const GAS_LIMIT: Weight = 100_000_000_000;
+
+		assert_ok!(Contracts::instantiate_with_code(
+			Origin::signed(1),
+			0,
+			GAS_LIMIT,
+			None,
+			call,
+			vec![],
+			vec![],
+		));
+		let addr = Contracts::contract_address(&ALICE, &code_hash, &[]);
+
+		assert_ok!(Multisig::approve_as_multi(
+			Origin::signed(1),
+			2,
+			vec![2, 3],
+			None,
+			code_hash.clone(),
+			0
+		));
+
+
+		let call = call_transfer(6, 15).encode();
+		let hash = blake2_256(&call);
+		assert_ok!(Multisig::approve_as_multi(
+			Origin::signed(1),
+			2,
+			vec![2, 3],
+			None,
+			hash.clone(),
+			0
+		));
+		assert_noop!(
+			Multisig::approve_as_multi(
+				Origin::signed(1),
+				2,
+				vec![2, 3],
+				Some(now()),
+				hash.clone(),
+				0
+			),
+			Error::<Test>::AlreadyApproved,
+		);
+		assert_ok!(Multisig::approve_as_multi(
+			Origin::signed(2),
+			2,
+			vec![1, 3],
+			Some(now()),
+			hash.clone(),
+			0
+		));
+		assert_noop!(
+			Multisig::approve_as_multi(
+				Origin::signed(3),
+				2,
+				vec![1, 2],
+				Some(now()),
+				hash.clone(),
+				0
+			),
+			Error::<Test>::AlreadyApproved,
+		);
 	});
 }
