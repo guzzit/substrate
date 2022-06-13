@@ -50,6 +50,6 @@ sp-tracing = { version = "5.0.0", path = "../../primitives/tracing" }
 substrate-test-runtime-client = { version = "2.0.0", path = "../../test-utils/runtime/client" }
 
 serde = "1.0.136"
-strum = { version = "0.23", features = ["derive"] }
+strum = { version = "0.24", features = ["derive"] }
 tokio = "1.15"
 tempfile = "3.1.0"
